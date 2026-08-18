@@ -7,6 +7,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"io"
+	"log"
 	"math/big"
 	"os"
 	"time"
@@ -56,6 +58,7 @@ func main() {
 
 	config := &socks5.Config{
 		AuthMethods: []socks5.Authenticator{auth},
+		Logger:      log.New(io.Discard, "", 0),
 	}
 	server, err := socks5.New(config)
 	if err != nil {
