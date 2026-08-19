@@ -13,10 +13,13 @@ sudo docker run -d \
 --restart always \
 -e USERNAME=<username> \
 -e PASSWORD=<password> \
+-v <crt_path*>:/app/crt
 -p 8800:3000 \
 --name socks \
 zhouc1230/local-socks:latest
 ```
+
+* crt_path: The path to your TLS certificate.
 
 > [!WARNING]
 > The TLS certificate **expires one year after installation**, so you need to restart it (or reinstall the container) annually. For enhanced security, consider changing your username and password periodically as well.  
@@ -38,6 +41,7 @@ sudo docker run -d \
 --restart always \
 -e USERNAME=<username> \
 -e PASSWORD=<password> \
+-v <crt_path>:/app/crt
 -p 8800:3000 \
 --name socks \
 zhouc1230/local-socks:latest
