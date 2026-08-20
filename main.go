@@ -25,6 +25,18 @@ func generateSelfSignedCert(host string) (tls.Certificate, error) {
 	const certPath = certDir + "/server.crt"
 	const keyPath = certDir + "/server.key"
 
+	if _, certErr := os.Stat(certPath); certErr == nil {
+		if _, keyErr := os.Stat(keyPath); keyErr == nil {
+			existingCert, err := tls.LoadX509KeyPair(certPath, keyPath)
+			if err == nil && len(existingCert.Certificate) > 0 {
+				cert, err := x509.ParseCertificate(existingCert.Certificate[0])
+				if err == nil && time.Now().Before(cert.NotAfter) {
+					return existingCert, nil
+				}
+			}
+		}
+	}
+
 	// 创建证书目录
 	if err := os.MkdirAll(certDir, 0700); err != nil {
 		return tls.Certificate{}, fmt.Errorf(
