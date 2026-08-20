@@ -38,7 +38,7 @@ zhouc1230/local-socks:latest
 2. Add a trusted TLS certificate to this proxy (note that it is a `.crt` file, not a `.key` file). Some clients display SHA256 (e.g., ShadowRocket), in which case you should enter the content output by docker logs*.
 
 > [!IMPORTANT]
-> After restarting the container, you need to update the trusted TLS certificate.
+> Many proxy clients will NOT use a proxy to access the local network (eg. localhost) by default, so you may need to configure it manually. You can refer to the `tunnel.conf` file in this repository for configuration instructions.
 
 \* You can use the command `sudo docker logs socks` to view the output, which is:
 

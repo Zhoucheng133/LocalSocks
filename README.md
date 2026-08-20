@@ -37,7 +37,7 @@ zhouc1230/local-socks:latest
 2. 在这个代理中添加信任的TLS证书（注意是`.crt`文件而不是`.key`文件），有一些客户端显示为SHA256 (比如ShadowRocket)，那你应该填入的内容为docker logs输出的内容*
 
 > [!IMPORTANT]
-> 重新启动服务之后需要更新信任的TLS证书
+> 很多代理客户端会默认不使用代理访问局域网，可能需要你手动配置一下，配置可以参考本仓库的`tunnel.conf`文件
 
 \* 你可以使用命令`sudo docker logs socks`查看，输出为
 ```
