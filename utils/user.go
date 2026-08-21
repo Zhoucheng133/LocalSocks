@@ -2,6 +2,7 @@ package utils
 
 import (
 	"database/sql"
+	"errors"
 
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/crypto/bcrypt"
@@ -120,7 +121,10 @@ func HandleRefresh(c fiber.Ctx) error {
 
 	claims, err := ValidateRefreshToken(token)
 	if err != nil {
-		return Respond(c, false, "invalid or expired refresh token")
+		if errors.Is(err, ErrTokenExpired) {
+			return Respond(c, false, "expired")
+		}
+		return Respond(c, false, "invalid refresh token")
 	}
 
 	accessToken, err := GenerateAccessToken(claims.ID, claims.Username)

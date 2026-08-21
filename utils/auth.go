@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	jwt "github.com/golang-jwt/jwt/v5"
-	"github.com/matoous/go-nanoid/v2"
+	gonanoid "github.com/matoous/go-nanoid/v2"
 )
 
 const (
@@ -104,6 +104,8 @@ func GenerateAccessToken(id, username string) (string, error) {
 	return generateToken(accessSecret, accessTTL, id, username)
 }
 
+var ErrTokenExpired = errors.New("expired")
+
 func parseToken(tokenStr string, secret []byte) (*Claims, error) {
 	claims := &Claims{}
 	_, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
@@ -113,6 +115,9 @@ func parseToken(tokenStr string, secret []byte) (*Claims, error) {
 		return secret, nil
 	})
 	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) && !errors.Is(err, jwt.ErrTokenNotValidYet) && !errors.Is(err, jwt.ErrSignatureInvalid) {
+			return nil, ErrTokenExpired
+		}
 		return nil, err
 	}
 	return claims, nil
@@ -136,7 +141,7 @@ func AuthFromHeader(c fiber.Ctx) (*Claims, error) {
 	}
 	claims, err := ValidateAccessToken(token)
 	if err != nil {
-		return nil, errors.New("invalid or expired token")
+		return nil, err
 	}
 	return claims, nil
 }
