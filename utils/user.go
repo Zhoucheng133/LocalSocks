@@ -98,8 +98,48 @@ func HandleLogin(c fiber.Ctx) error {
 		return Respond(c, false, "incorrect password")
 	}
 
+	accessToken, err := GenerateAccessToken(id, body.Username)
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+	refreshToken, err := GenerateRefreshToken(id, body.Username)
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+	SetRefreshTokenCookie(c, refreshToken)
+
+	return Respond(c, true, accessToken)
+}
+
+// GET /api/refresh
+func HandleRefresh(c fiber.Ctx) error {
+	token := c.Cookies(cookieName)
+	if token == "" {
+		return Respond(c, false, "missing refresh token")
+	}
+
+	claims, err := ValidateRefreshToken(token)
+	if err != nil {
+		return Respond(c, false, "invalid or expired refresh token")
+	}
+
+	accessToken, err := GenerateAccessToken(claims.ID, claims.Username)
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+
+	return Respond(c, true, accessToken)
+}
+
+// ALL /api/auth
+func HandleAuth(c fiber.Ctx) error {
+	claims, err := AuthFromHeader(c)
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+
 	return Respond(c, true, fiber.Map{
-		"id":       id,
-		"username": body.Username,
+		"id":       claims.ID,
+		"username": claims.Username,
 	})
 }
