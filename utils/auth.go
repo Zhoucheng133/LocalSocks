@@ -22,7 +22,7 @@ const (
 	refreshTTL = 30 * 24 * time.Hour
 	accessTTL  = 30 * time.Minute
 
-	bearerPrefix = "Bearer "
+	tokenHeader = "token"
 )
 
 var (
@@ -128,14 +128,9 @@ func ValidateRefreshToken(tokenStr string) (*Claims, error) {
 	return parseToken(tokenStr, refreshSecret)
 }
 
-// AuthFromHeader validates the access token carried in the Authorization header.
-// Both "Bearer <token>" and a raw token are accepted.
+// AuthFromHeader validates the access token carried in the "token" header.
 func AuthFromHeader(c fiber.Ctx) (*Claims, error) {
-	auth := c.Get("Authorization")
-	if auth == "" {
-		return nil, errors.New("missing authorization header")
-	}
-	token := strings.TrimSpace(strings.TrimPrefix(auth, bearerPrefix))
+	token := strings.TrimSpace(c.Get(tokenHeader))
 	if token == "" {
 		return nil, errors.New("missing token")
 	}
