@@ -1,4 +1,4 @@
-module local_socks_core
+module local_socks
 
 go 1.25.4
 

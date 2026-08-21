@@ -1,4 +1,4 @@
-# LocalSocks Docker
+# LocalSocks
 
 这是一个部署在Docker上的Socks5 (Over TLS) VPN服务端工具
 
