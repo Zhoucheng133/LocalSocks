@@ -52,6 +52,36 @@ func HandleServerAdd(c fiber.Ctx) error {
 	})
 }
 
+// GET /api/server/list
+func HandleServerList(c fiber.Ctx) error {
+	rows, err := db.Query(`SELECT id, name, host, username, running FROM server`)
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+	defer rows.Close()
+
+	servers := []fiber.Map{}
+	for rows.Next() {
+		var id, name, host, username string
+		var running int
+		if err := rows.Scan(&id, &name, &host, &username, &running); err != nil {
+			return Respond(c, false, err.Error())
+		}
+		servers = append(servers, fiber.Map{
+			"id":       id,
+			"name":     name,
+			"host":     host,
+			"username": username,
+			"running":  running != 0,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return Respond(c, false, err.Error())
+	}
+
+	return Respond(c, true, servers)
+}
+
 // DELETE /api/server/del/:id
 func HandleServerDel(c fiber.Ctx) error {
 	id := c.Params("id")
