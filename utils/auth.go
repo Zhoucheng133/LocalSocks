@@ -141,6 +141,14 @@ func AuthFromHeader(c fiber.Ctx) (*Claims, error) {
 	return claims, nil
 }
 
+// RequireAuth is a middleware that guards routes with AuthFromHeader.
+func RequireAuth(c fiber.Ctx) error {
+	if _, err := AuthFromHeader(c); err != nil {
+		return Respond(c, false, err.Error())
+	}
+	return c.Next()
+}
+
 // SetRefreshTokenCookie writes the refresh token into a cookie scoped to /api/refresh.
 func SetRefreshTokenCookie(c fiber.Ctx, token string) {
 	c.Cookie(&fiber.Cookie{
@@ -148,6 +156,17 @@ func SetRefreshTokenCookie(c fiber.Ctx, token string) {
 		Value:    token,
 		Path:     cookiePath,
 		MaxAge:   int(refreshTTL.Seconds()),
+		HTTPOnly: true,
+		Secure:   false,
+	})
+}
+
+// ClearRefreshTokenCookie removes the refresh token cookie.
+func ClearRefreshTokenCookie(c fiber.Ctx) {
+	c.Cookie(&fiber.Cookie{
+		Name:     cookieName,
+		Path:     cookiePath,
+		MaxAge:   -1,
 		HTTPOnly: true,
 		Secure:   false,
 	})

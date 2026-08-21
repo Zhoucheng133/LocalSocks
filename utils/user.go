@@ -131,6 +131,45 @@ func HandleRefresh(c fiber.Ctx) error {
 	return Respond(c, true, accessToken)
 }
 
+// POST /api/user/edit
+func HandleUserEdit(c fiber.Ctx) error {
+	var body credentials
+	if err := c.Bind().Body(&body); err != nil {
+		return Respond(c, false, "failed to parse request body")
+	}
+	if body.Username == "" || body.Password == "" {
+		return Respond(c, false, "username or password cannot be empty")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+
+	var id string
+	err = db.QueryRow(`SELECT id FROM user LIMIT 1`).Scan(&id)
+	if err == sql.ErrNoRows {
+		return Respond(c, false, "no user exists")
+	}
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+
+	if _, err := db.Exec(
+		`UPDATE user SET username = ?, password = ? WHERE id = ?`,
+		body.Username, string(hash), id,
+	); err != nil {
+		return Respond(c, false, err.Error())
+	}
+
+	ClearRefreshTokenCookie(c)
+
+	return Respond(c, true, fiber.Map{
+		"id":       id,
+		"username": body.Username,
+	})
+}
+
 // ALL /api/auth
 func HandleAuth(c fiber.Ctx) error {
 	claims, err := AuthFromHeader(c)

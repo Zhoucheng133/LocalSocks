@@ -26,5 +26,11 @@ func main() {
 	app.Get("/api/refresh", utils.HandleRefresh)
 	app.All("/api/auth", utils.HandleAuth)
 
+	protected := app.Group("/api", utils.RequireAuth)
+	protected.Post("/user/edit", utils.HandleUserEdit)
+	protected.Post("/server/add", utils.HandleServerAdd)
+	protected.Delete("/server/del/:id", utils.HandleServerDel)
+	protected.Post("/server/edit/:id", utils.HandleServerEdit)
+
 	log.Fatal(app.Listen(":8080"))
 }
