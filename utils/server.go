@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"golang.org/x/crypto/bcrypt"
 
 	gonanoid "github.com/matoous/go-nanoid/v2"
 )
@@ -27,7 +26,7 @@ func HandleServerAdd(c fiber.Ctx) error {
 		return Respond(c, false, "name, host, username or password cannot be empty")
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	enc, err := Encrypt(body.Password, serverSecret)
 	if err != nil {
 		return Respond(c, false, err.Error())
 	}
@@ -39,7 +38,7 @@ func HandleServerAdd(c fiber.Ctx) error {
 
 	if _, err := db.Exec(
 		`INSERT INTO server (id, name, host, username, password) VALUES (?, ?, ?, ?, ?)`,
-		id, body.Name, body.Host, body.Username, string(hash),
+		id, body.Name, body.Host, body.Username, enc,
 	); err != nil {
 		return Respond(c, false, err.Error())
 	}
@@ -129,12 +128,12 @@ func HandleServerEdit(c fiber.Ctx) error {
 		args = append(args, body.Username)
 	}
 	if body.Password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+		enc, err := Encrypt(body.Password, serverSecret)
 		if err != nil {
 			return Respond(c, false, err.Error())
 		}
 		sets = append(sets, "password = ?")
-		args = append(args, string(hash))
+		args = append(args, enc)
 	}
 	if len(sets) == 0 {
 		return Respond(c, false, "nothing to update")

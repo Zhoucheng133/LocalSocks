@@ -15,6 +15,10 @@ const (
 	envFile          = "./db/.env"
 	refreshSecretKey = "refresh_secret"
 	accessSecretKey  = "access_secret"
+	serverSecretKey  = "server_secret"
+
+	// AES-256 密钥长度
+	serverSecretSize = 32
 
 	cookieName = "localsocks_refresh_token"
 	cookiePath = "/api/refresh"
@@ -28,6 +32,7 @@ const (
 var (
 	refreshSecret []byte
 	accessSecret  []byte
+	serverSecret  []byte // AES-GCM 加密存储服务器密码的密钥（32字节）
 )
 
 type Claims struct {
@@ -56,19 +61,33 @@ func InitAuth() error {
 	}
 
 	added := false
-	for _, key := range []string{refreshSecretKey, accessSecretKey} {
-		if values[key] != "" {
+	type secretSpec struct {
+		key    string
+		length int // 0 表示默认长度(21)
+	}
+	for _, s := range []secretSpec{
+		{refreshSecretKey, 0},
+		{accessSecretKey, 0},
+		{serverSecretKey, serverSecretSize},
+	} {
+		if values[s.key] != "" {
 			continue
 		}
-		id, err := gonanoid.New()
+		var id string
+		var err error
+		if s.length > 0 {
+			id, err = gonanoid.New(s.length)
+		} else {
+			id, err = gonanoid.New()
+		}
 		if err != nil {
 			return err
 		}
 		if content != "" && !strings.HasSuffix(content, "\n") {
 			content += "\n"
 		}
-		content += key + "=" + id + "\n"
-		values[key] = id
+		content += s.key + "=" + id + "\n"
+		values[s.key] = id
 		added = true
 	}
 
@@ -80,6 +99,7 @@ func InitAuth() error {
 
 	refreshSecret = []byte(values[refreshSecretKey])
 	accessSecret = []byte(values[accessSecretKey])
+	serverSecret = []byte(values[serverSecretKey])
 	return nil
 }
 
