@@ -38,7 +38,7 @@ func generateSelfSignedCert(host string) (tls.Certificate, error) {
 			existingCert, err := tls.LoadX509KeyPair(certPath, keyPath)
 			if err == nil && len(existingCert.Certificate) > 0 {
 				cert, err := x509.ParseCertificate(existingCert.Certificate[0])
-				if err == nil && time.Now().Before(cert.NotAfter) {
+				if err == nil && time.Now().Before(cert.NotAfter) && cert.Subject.CommonName == host {
 					return existingCert, nil
 				}
 			}
@@ -256,9 +256,16 @@ func RunSocks(c fiber.Ctx) error {
 	}
 
 	l, err := tls.Listen("tcp", ":4500", tlsConfig)
+	if err != nil {
+		return Respond(c, false, "failed to listen: "+err.Error())
+	}
 	listener = l
 
-	server.Serve(l)
+	go func(srv *socks5.Server, ln net.Listener) {
+		if err := srv.Serve(ln); err != nil {
+			log.Println("socks5 server stopped:", err)
+		}
+	}(server, l)
 
 	return Respond(c, true, "")
 }
