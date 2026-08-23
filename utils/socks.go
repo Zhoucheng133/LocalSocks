@@ -26,6 +26,7 @@ import (
 var lock sync.Mutex
 var server *socks5.Server
 var listener net.Listener
+var runningID string
 
 func generateSelfSignedCert(host string) (tls.Certificate, error) {
 
@@ -261,6 +262,14 @@ func RunSocks(c fiber.Ctx) error {
 	}
 	listener = l
 
+	if _, err := db.Exec(`UPDATE server SET running = 1 WHERE id = ?`, id); err != nil {
+		listener = nil
+		server = nil
+		l.Close()
+		return Respond(c, false, "failed to update running state: "+err.Error())
+	}
+	runningID = id
+
 	go func(srv *socks5.Server, ln net.Listener) {
 		if err := srv.Serve(ln); err != nil {
 			log.Println("socks5 server stopped:", err)
@@ -278,11 +287,21 @@ func StopSocks(c fiber.Ctx) error {
 		return Respond(c, false, "server not started")
 	}
 	l := listener
-	server = nil
-	listener = nil
+	id := runningID
 
 	if err := l.Close(); err != nil {
 		return Respond(c, false, err.Error())
 	}
+
+	if _, err := db.Exec(`UPDATE server SET running = 0 WHERE id = ?`, id); err != nil {
+		server = nil
+		listener = nil
+		runningID = ""
+		return Respond(c, false, "server stopped but failed to update running state: "+err.Error())
+	}
+
+	server = nil
+	listener = nil
+	runningID = ""
 	return Respond(c, true, "")
 }
