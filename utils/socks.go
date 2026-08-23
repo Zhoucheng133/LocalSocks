@@ -28,11 +28,20 @@ var server *socks5.Server
 var listener net.Listener
 var runningID string
 
-func generateSelfSignedCert(host string) (tls.Certificate, error) {
+const certDir = "./crt"
+const certPath = certDir + "/server.crt"
+const keyPath = certDir + "/server.key"
 
-	const certDir = "./crt"
-	const certPath = certDir + "/server.crt"
-	const keyPath = certDir + "/server.key"
+func certFingerprint(der []byte) string {
+	sum := sha256.Sum256(der)
+	parts := make([]string, len(sum))
+	for i, b := range sum {
+		parts[i] = fmt.Sprintf("%02X", b)
+	}
+	return strings.Join(parts, ":")
+}
+
+func generateSelfSignedCert(host string) (tls.Certificate, error) {
 
 	if _, certErr := os.Stat(certPath); certErr == nil {
 		if _, keyErr := os.Stat(keyPath); keyErr == nil {
@@ -177,16 +186,6 @@ func generateSelfSignedCert(host string) (tls.Certificate, error) {
 		)
 	}
 
-	sum := sha256.Sum256(derBytes)
-	fingerprint := make([]string, len(sum))
-	for i, b := range sum {
-		fingerprint[i] = fmt.Sprintf("%02X", b)
-	}
-
-	fmt.Println("Generated TLS certificate:", certPath)
-	fmt.Println("TLS private key:", keyPath)
-	fmt.Println("SHA256 Fingerprint:", strings.Join(fingerprint, ":"))
-
 	return tls.Certificate{
 		Certificate: [][]byte{derBytes},
 		PrivateKey:  priv,
@@ -304,4 +303,42 @@ func StopSocks(c fiber.Ctx) error {
 	listener = nil
 	runningID = ""
 	return Respond(c, true, "")
+}
+
+func DownloadCert(c fiber.Ctx) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	info, err := os.Stat(certPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Respond(c, false, "certificate not found")
+		}
+		return Respond(c, false, err.Error())
+	}
+	if info.IsDir() {
+		return Respond(c, false, "certificate not found")
+	}
+
+	return c.Download(certPath, "server.crt")
+}
+
+func GetCertFingerprint(c fiber.Ctx) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Respond(c, false, "certificate not found")
+		}
+		return Respond(c, false, err.Error())
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return Respond(c, false, "invalid certificate file")
+	}
+
+	return Respond(c, true, certFingerprint(block.Bytes))
 }
