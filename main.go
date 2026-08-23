@@ -33,5 +33,8 @@ func main() {
 	protected.Delete("/server/del/:id", utils.HandleServerDel)
 	protected.Post("/server/edit/:id", utils.HandleServerEdit)
 
+	protected.Post("/server/run/:id", utils.RunSocks)
+	protected.Post("/server/stop", utils.StopSocks)
+
 	log.Fatal(app.Listen(":8080"))
 }

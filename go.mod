@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
+	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gofiber/schema v1.8.3 // indirect
 	github.com/gofiber/utils/v2 v2.4.1 // indirect
