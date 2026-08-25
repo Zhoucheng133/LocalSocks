@@ -29,6 +29,9 @@ var listener net.Listener
 var runningID string
 
 var certMu sync.Mutex
+var cachedCert *tls.Certificate
+var cachedCertHost string
+var cachedCertNotAfter time.Time
 
 const certDir = "./crt"
 const certPath = certDir + "/server.crt"
@@ -198,11 +201,27 @@ func getOrRenewCert(host string) (*tls.Certificate, error) {
 	certMu.Lock()
 	defer certMu.Unlock()
 
+	if cachedCert != nil && cachedCertHost == host && time.Now().Before(cachedCertNotAfter) {
+		return cachedCert, nil
+	}
+
 	cert, err := generateSelfSignedCert(host)
 	if err != nil {
 		return nil, err
 	}
-	return &cert, nil
+
+	notAfter := time.Now().Add(365 * 24 * time.Hour)
+	if len(cert.Certificate) > 0 {
+		if parsed, parseErr := x509.ParseCertificate(cert.Certificate[0]); parseErr == nil {
+			notAfter = parsed.NotAfter
+		}
+	}
+
+	cachedCert = &cert
+	cachedCertHost = host
+	cachedCertNotAfter = notAfter
+
+	return cachedCert, nil
 }
 
 func certRemainingSeconds() (int64, error) {
@@ -306,6 +325,9 @@ func RunSocks(c fiber.Ctx) error {
 }
 
 func AutoStartRunning() {
+	lock.Lock()
+	defer lock.Unlock()
+
 	var id string
 	err := db.QueryRow(`SELECT running FROM config`).Scan(&id)
 	if err != nil || id == "" {
@@ -314,6 +336,9 @@ func AutoStartRunning() {
 
 	if err := startSocksByID(id); err != nil {
 		log.Printf("auto-start socks5 failed: %v\n", err)
+		if _, resetErr := db.Exec(`UPDATE config SET running = '', crt_created = '' WHERE running = ?`, id); resetErr != nil {
+			log.Printf("failed to reset running state after auto-start failure: %v\n", resetErr)
+		}
 	} else {
 		log.Printf("auto-start socks5 server: %s\n", id)
 	}
@@ -346,8 +371,8 @@ func StopSocks(c fiber.Ctx) error {
 }
 
 func DownloadCert(c fiber.Ctx) error {
-	lock.Lock()
-	defer lock.Unlock()
+	certMu.Lock()
+	defer certMu.Unlock()
 
 	info, err := os.Stat(certPath)
 	if err != nil {
@@ -364,8 +389,8 @@ func DownloadCert(c fiber.Ctx) error {
 }
 
 func GetCertRemaining(c fiber.Ctx) error {
-	lock.Lock()
-	defer lock.Unlock()
+	certMu.Lock()
+	defer certMu.Unlock()
 
 	remaining, err := certRemainingSeconds()
 	if err != nil {
@@ -379,8 +404,8 @@ func GetCertRemaining(c fiber.Ctx) error {
 }
 
 func GetCertFingerprint(c fiber.Ctx) error {
-	lock.Lock()
-	defer lock.Unlock()
+	certMu.Lock()
+	defer certMu.Unlock()
 
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
