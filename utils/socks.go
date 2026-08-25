@@ -28,6 +28,8 @@ var server *socks5.Server
 var listener net.Listener
 var runningID string
 
+var certMu sync.Mutex
+
 const certDir = "./crt"
 const certPath = certDir + "/server.crt"
 const keyPath = certDir + "/server.key"
@@ -192,6 +194,36 @@ func generateSelfSignedCert(host string) (tls.Certificate, error) {
 	}, nil
 }
 
+func getOrRenewCert(host string) (*tls.Certificate, error) {
+	certMu.Lock()
+	defer certMu.Unlock()
+
+	cert, err := generateSelfSignedCert(host)
+	if err != nil {
+		return nil, err
+	}
+	return &cert, nil
+}
+
+func certRemainingSeconds() (int64, error) {
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return 0, err
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return 0, fmt.Errorf("invalid certificate file")
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	return int64(time.Until(cert.NotAfter).Seconds()), nil
+}
+
 func RunSocks(c fiber.Ctx) error {
 	lock.Lock()
 	defer lock.Unlock()
@@ -246,13 +278,13 @@ func RunSocks(c fiber.Ctx) error {
 	if err != nil {
 		return Respond(c, false, "failed to init socks: "+err.Error())
 	}
-	cert, err := generateSelfSignedCert(host)
-
-	if err != nil {
+	if _, err := generateSelfSignedCert(host); err != nil {
 		return Respond(c, false, "failed to generate cert: "+err.Error())
 	}
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
+		GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return getOrRenewCert(host)
+		},
 	}
 
 	l, err := tls.Listen("tcp", ":4500", tlsConfig)
@@ -321,6 +353,21 @@ func DownloadCert(c fiber.Ctx) error {
 	}
 
 	return c.Download(certPath, "server.crt")
+}
+
+func GetCertRemaining(c fiber.Ctx) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	remaining, err := certRemainingSeconds()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Respond(c, false, "certificate not found")
+		}
+		return Respond(c, false, err.Error())
+	}
+
+	return Respond(c, true, remaining)
 }
 
 func GetCertFingerprint(c fiber.Ctx) error {
