@@ -38,5 +38,9 @@ func main() {
 	protected.Post("/server/run/:id", utils.RunSocks)
 	protected.Post("/server/stop", utils.StopSocks)
 
+	protected.Get("/server/cert", utils.DownloadCert)
+	protected.Get("/server/fingerprint", utils.GetCertFingerprint)
+	protected.Get("/server/remain", utils.GetCertRemaining)
+
 	log.Fatal(app.Listen(":8080"))
 }
