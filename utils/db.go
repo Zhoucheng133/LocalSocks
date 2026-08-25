@@ -46,6 +46,18 @@ func InitDB() error {
 		return err
 	}
 
+	var cnt int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM config`).Scan(&cnt); err != nil {
+		d.Close()
+		return err
+	}
+	if cnt == 0 {
+		if _, err := d.Exec(`INSERT INTO config (running, crt_created) VALUES ('', '')`); err != nil {
+			d.Close()
+			return err
+		}
+	}
+
 	db = d
 	return nil
 }
