@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"database/sql"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -53,17 +52,21 @@ func HandleServerAdd(c fiber.Ctx) error {
 
 // GET /api/server/list
 func HandleServerList(c fiber.Ctx) error {
-	rows, err := db.Query(`SELECT id, name, host, username, running FROM server`)
+	rows, err := db.Query(`SELECT id, name, host, username FROM server`)
 	if err != nil {
 		return Respond(c, false, err.Error())
 	}
 	defer rows.Close()
 
+	var currentRunning string
+	if err := db.QueryRow(`SELECT running FROM config`).Scan(&currentRunning); err != nil {
+		return Respond(c, false, err.Error())
+	}
+
 	servers := []fiber.Map{}
 	for rows.Next() {
 		var id, name, host, username string
-		var running int
-		if err := rows.Scan(&id, &name, &host, &username, &running); err != nil {
+		if err := rows.Scan(&id, &name, &host, &username); err != nil {
 			return Respond(c, false, err.Error())
 		}
 		servers = append(servers, fiber.Map{
@@ -71,7 +74,7 @@ func HandleServerList(c fiber.Ctx) error {
 			"name":     name,
 			"host":     host,
 			"username": username,
-			"running":  running != 0,
+			"running":  id == currentRunning,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -85,15 +88,12 @@ func HandleServerList(c fiber.Ctx) error {
 func HandleServerDel(c fiber.Ctx) error {
 	id := c.Params("id")
 
-	var running int
-	err := db.QueryRow(`SELECT running FROM server WHERE id = ?`, id).Scan(&running)
-	if err == sql.ErrNoRows {
-		return Respond(c, false, "server not found")
-	}
+	var running string
+	err := db.QueryRow(`SELECT running FROM config`).Scan(&running)
 	if err != nil {
 		return Respond(c, false, err.Error())
 	}
-	if running != 0 {
+	if running == id {
 		return Respond(c, false, "server is running")
 	}
 

@@ -23,8 +23,11 @@ CREATE TABLE IF NOT EXISTS server (
 	name     TEXT NOT NULL,
 	host     TEXT NOT NULL,
 	username TEXT NOT NULL,
-	password TEXT NOT NULL,
-	running  INTEGER NOT NULL DEFAULT 0
+	password TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS config (
+	running     TEXT NOT NULL DEFAULT '',
+	crt_created TEXT NOT NULL DEFAULT ''
 );`
 )
 

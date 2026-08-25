@@ -18,6 +18,8 @@ func main() {
 		log.Fatal("failed to init auth: ", err)
 	}
 
+	utils.AutoStartRunning()
+
 	app := fiber.New()
 
 	app.Get("/api/init", utils.HandleInit)

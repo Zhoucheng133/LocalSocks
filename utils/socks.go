@@ -224,46 +224,19 @@ func certRemainingSeconds() (int64, error) {
 	return int64(time.Until(cert.NotAfter).Seconds()), nil
 }
 
-func RunSocks(c fiber.Ctx) error {
-	lock.Lock()
-	defer lock.Unlock()
-	id := c.Params("id")
-
-	rows, err := db.Query(`SELECT running FROM server`)
-	if err != nil {
-		return Respond(c, false, err.Error())
-	}
-	var runningList []int
-	for rows.Next() {
-		var running int
-		if err := rows.Scan(&running); err != nil {
-			rows.Close()
-			return Respond(c, false, err.Error())
-		}
-		runningList = append(runningList, running)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return Respond(c, false, err.Error())
-	}
-	for _, running := range runningList {
-		if running != 0 {
-			return Respond(c, false, "another server is already running")
-		}
-	}
-
+func startSocksByID(id string) error {
 	var host, username, encPassword string
-	err = db.QueryRow(`SELECT host, username, password FROM server WHERE id = ?`, id).Scan(&host, &username, &encPassword)
+	err := db.QueryRow(`SELECT host, username, password FROM server WHERE id = ?`, id).Scan(&host, &username, &encPassword)
 	if err == sql.ErrNoRows {
-		return Respond(c, false, "server not found")
+		return fmt.Errorf("server not found")
 	}
 	if err != nil {
-		return Respond(c, false, err.Error())
+		return err
 	}
 
 	password, err := Decrypt(encPassword, serverSecret)
 	if err != nil {
-		return Respond(c, false, "failed to decrypt password: "+err.Error())
+		return fmt.Errorf("failed to decrypt password: %w", err)
 	}
 
 	creds := socks5.StaticCredentials{username: password}
@@ -273,13 +246,13 @@ func RunSocks(c fiber.Ctx) error {
 		AuthMethods: []socks5.Authenticator{auth},
 		Logger:      log.New(io.Discard, "", 0),
 	}
-	server, err = socks5.New(config)
-
+	srv, err := socks5.New(config)
 	if err != nil {
-		return Respond(c, false, "failed to init socks: "+err.Error())
+		return fmt.Errorf("failed to init socks: %w", err)
 	}
+
 	if _, err := generateSelfSignedCert(host); err != nil {
-		return Respond(c, false, "failed to generate cert: "+err.Error())
+		return fmt.Errorf("failed to generate cert: %w", err)
 	}
 	tlsConfig := &tls.Config{
 		GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -289,25 +262,61 @@ func RunSocks(c fiber.Ctx) error {
 
 	l, err := tls.Listen("tcp", ":4500", tlsConfig)
 	if err != nil {
-		return Respond(c, false, "failed to listen: "+err.Error())
+		return fmt.Errorf("failed to listen: %w", err)
 	}
-	listener = l
 
-	if _, err := db.Exec(`UPDATE server SET running = 1 WHERE id = ?`, id); err != nil {
-		listener = nil
-		server = nil
+	now := time.Now().Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE config SET running = ?, crt_created = ?`, id, now); err != nil {
 		l.Close()
-		return Respond(c, false, "failed to update running state: "+err.Error())
+		return fmt.Errorf("failed to update running state: %w", err)
 	}
+
+	server = srv
+	listener = l
 	runningID = id
 
-	go func(srv *socks5.Server, ln net.Listener) {
-		if err := srv.Serve(ln); err != nil {
+	go func() {
+		if err := srv.Serve(l); err != nil {
 			log.Println("socks5 server stopped:", err)
 		}
-	}(server, l)
+	}()
+
+	return nil
+}
+
+func RunSocks(c fiber.Ctx) error {
+	lock.Lock()
+	defer lock.Unlock()
+	id := c.Params("id")
+
+	var currentRunning string
+	err := db.QueryRow(`SELECT running FROM config`).Scan(&currentRunning)
+	if err != nil {
+		return Respond(c, false, err.Error())
+	}
+	if currentRunning != "" {
+		return Respond(c, false, "another server is already running")
+	}
+
+	if err := startSocksByID(id); err != nil {
+		return Respond(c, false, err.Error())
+	}
 
 	return Respond(c, true, "")
+}
+
+func AutoStartRunning() {
+	var id string
+	err := db.QueryRow(`SELECT running FROM config`).Scan(&id)
+	if err != nil || id == "" {
+		return
+	}
+
+	if err := startSocksByID(id); err != nil {
+		log.Printf("auto-start socks5 failed: %v\n", err)
+	} else {
+		log.Printf("auto-start socks5 server: %s\n", id)
+	}
 }
 
 func StopSocks(c fiber.Ctx) error {
@@ -318,13 +327,12 @@ func StopSocks(c fiber.Ctx) error {
 		return Respond(c, false, "server not started")
 	}
 	l := listener
-	id := runningID
 
 	if err := l.Close(); err != nil {
 		return Respond(c, false, err.Error())
 	}
 
-	if _, err := db.Exec(`UPDATE server SET running = 0 WHERE id = ?`, id); err != nil {
+	if _, err := db.Exec(`UPDATE config SET running = '', crt_created = ''`); err != nil {
 		server = nil
 		listener = nil
 		runningID = ""
