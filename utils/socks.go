@@ -295,9 +295,7 @@ func startSocksByID(id string) error {
 	runningID = id
 
 	go func() {
-		if err := srv.Serve(l); err != nil {
-			log.Println("socks5 server stopped:", err)
-		}
+		srv.Serve(l)
 	}()
 
 	return nil
