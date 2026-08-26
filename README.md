@@ -92,6 +92,8 @@ The `tunnel.conf` file in this repository is a configuration file for Shadowrock
 ## Update
 
 ```bash
+sudo docker pull zhouc1230/local-socks:latest
+
 sudo docker stop socks && sudo docker rm socks
 
 sudo docker run -d \
