@@ -33,7 +33,7 @@ var cachedCert *tls.Certificate
 var cachedCertHost string
 var cachedCertNotAfter time.Time
 
-const certDir = "./crt"
+const certDir = "./db/crt"
 const certPath = certDir + "/server.crt"
 const keyPath = certDir + "/server.key"
 
