@@ -1,19 +1,31 @@
-FROM golang:1.25-alpine AS builder
-WORKDIR /app
+# syntax=docker/dockerfile:1
 
+FROM oven/bun:1 AS frontend-builder
+WORKDIR /app
+COPY frontend/package.json frontend/bun.lockb* ./
+RUN bun install --frozen-lockfile
+COPY frontend/ ./
+RUN bun run build
+
+FROM golang:1.23-alpine AS backend-builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-ENV TZ=Asia/Shanghai
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server .
 
-RUN go env -w GO111MODULE=on
-RUN go env -w GOPROXY=https://goproxy.cn,direct
+FROM nginx:1.27-alpine
 
-RUN go mod tidy
-RUN go build -o server .
+RUN apk add --no-cache ca-certificates tzdata bash
 
-FROM alpine:3.18
-WORKDIR /app
-COPY --from=builder /app/server /usr/local/bin/server
+COPY --from=frontend-builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 3000
+COPY --from=backend-builder /app/server /app/server
 
-CMD ["server"]
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+EXPOSE 80 4500
+
+ENTRYPOINT ["/start.sh"]
