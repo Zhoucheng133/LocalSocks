@@ -37,6 +37,11 @@ const certDir = "./crt"
 const certPath = certDir + "/server.crt"
 const keyPath = certDir + "/server.key"
 
+const certRenewBefore = 30 * 24 * time.Hour
+const certCheckInterval = 1 * time.Hour
+
+var renewalStop chan struct{}
+
 func certFingerprint(der []byte) string {
 	sum := sha256.Sum256(der)
 	parts := make([]string, len(sum))
@@ -60,6 +65,10 @@ func generateSelfSignedCert(host string) (tls.Certificate, error) {
 		}
 	}
 
+	return createNewCert(host)
+}
+
+func createNewCert(host string) (tls.Certificate, error) {
 	if err := os.MkdirAll(certDir, 0700); err != nil {
 		return tls.Certificate{}, fmt.Errorf(
 			"failed to create certificate directory: %w",
@@ -243,6 +252,68 @@ func certRemainingSeconds() (int64, error) {
 	return int64(time.Until(cert.NotAfter).Seconds()), nil
 }
 
+func renewCertNow(host, id string) error {
+	cert, err := createNewCert(host)
+	if err != nil {
+		return fmt.Errorf("failed to renew certificate: %w", err)
+	}
+
+	notAfter := time.Now().Add(365 * 24 * time.Hour)
+	if len(cert.Certificate) > 0 {
+		if parsed, parseErr := x509.ParseCertificate(cert.Certificate[0]); parseErr == nil {
+			notAfter = parsed.NotAfter
+		}
+	}
+
+	certMu.Lock()
+	cachedCert = &cert
+	cachedCertHost = host
+	cachedCertNotAfter = notAfter
+	certMu.Unlock()
+
+	lock.Lock()
+	defer lock.Unlock()
+	if runningID != id {
+		return nil
+	}
+
+	now := time.Now().Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE config SET crt_created = ? WHERE running = ?`, now, id); err != nil {
+		return fmt.Errorf("failed to update crt_created: %w", err)
+	}
+
+	return nil
+}
+
+func runCertRenewalLoop(host, id string, stop <-chan struct{}) {
+	ticker := time.NewTicker(certCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			remaining, err := certRemainingSeconds()
+			if err != nil {
+				log.Printf("cert renewal check failed: %v\n", err)
+				continue
+			}
+
+			if time.Duration(remaining)*time.Second > certRenewBefore {
+				continue
+			}
+
+			if err := renewCertNow(host, id); err != nil {
+				log.Printf("cert renewal failed: %v\n", err)
+				continue
+			}
+
+			log.Printf("certificate auto-renewed for host %s\n", host)
+		}
+	}
+}
+
 func startSocksByID(id string) error {
 	var host, username, encPassword string
 	err := db.QueryRow(`SELECT host, username, password FROM server WHERE id = ?`, id).Scan(&host, &username, &encPassword)
@@ -293,6 +364,10 @@ func startSocksByID(id string) error {
 	server = srv
 	listener = l
 	runningID = id
+
+	stop := make(chan struct{})
+	renewalStop = stop
+	go runCertRenewalLoop(host, id, stop)
 
 	go func() {
 		srv.Serve(l)
@@ -353,6 +428,11 @@ func StopSocks(c fiber.Ctx) error {
 
 	if err := l.Close(); err != nil {
 		return Respond(c, false, err.Error())
+	}
+
+	if renewalStop != nil {
+		close(renewalStop)
+		renewalStop = nil
 	}
 
 	if _, err := db.Exec(`UPDATE config SET running = '', crt_created = ''`); err != nil {
