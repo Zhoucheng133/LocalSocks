@@ -16,6 +16,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server .
 
 FROM nginx:1.27-alpine
 
+WORKDIR /app
+
 RUN apk add --no-cache ca-certificates tzdata bash
 
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
