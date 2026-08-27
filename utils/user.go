@@ -135,43 +135,55 @@ func HandleRefresh(c fiber.Ctx) error {
 	return Respond(c, true, accessToken)
 }
 
+type changePasswordBody struct {
+	OldPassword     string `json:"oldPassword"`
+	NewPassword     string `json:"newPassword"`
+	ConfirmPassword string `json:"confirmPassword"`
+}
+
 // POST /api/user/edit
 func HandleUserEdit(c fiber.Ctx) error {
-	var body credentials
-	if err := c.Bind().Body(&body); err != nil {
-		return Respond(c, false, "failed to parse request body")
-	}
-	if body.Username == "" || body.Password == "" {
-		return Respond(c, false, "username or password cannot be empty")
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	claims, err := AuthFromHeader(c)
 	if err != nil {
 		return Respond(c, false, err.Error())
 	}
 
-	var id string
-	err = db.QueryRow(`SELECT id FROM user LIMIT 1`).Scan(&id)
-	if err == sql.ErrNoRows {
-		return Respond(c, false, "no user exists")
+	var body changePasswordBody
+	if err := c.Bind().Body(&body); err != nil {
+		return Respond(c, false, "failed to parse request body")
 	}
+	if body.OldPassword == "" || body.NewPassword == "" || body.ConfirmPassword == "" {
+		return Respond(c, false, "all password fields cannot be empty")
+	}
+	if body.NewPassword != body.ConfirmPassword {
+		return Respond(c, false, "new passwords do not match")
+	}
+
+	var storedHash string
+	err = db.QueryRow(`SELECT password FROM user WHERE id = ?`, claims.ID).Scan(&storedHash)
+	if err != nil {
+		return Respond(c, false, "user not found")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(body.OldPassword)); err != nil {
+		return Respond(c, false, "incorrect old password")
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return Respond(c, false, err.Error())
 	}
 
 	if _, err := db.Exec(
-		`UPDATE user SET username = ?, password = ? WHERE id = ?`,
-		body.Username, string(hash), id,
+		`UPDATE user SET password = ? WHERE id = ?`,
+		string(newHash), claims.ID,
 	); err != nil {
 		return Respond(c, false, err.Error())
 	}
 
 	ClearRefreshTokenCookie(c)
 
-	return Respond(c, true, fiber.Map{
-		"id":       id,
-		"username": body.Username,
-	})
+	return Respond(c, true, nil)
 }
 
 // POST /api/user/logout
