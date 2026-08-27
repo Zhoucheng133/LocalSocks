@@ -30,6 +30,7 @@ func main() {
 
 	protected := app.Group("/api", utils.RequireAuth)
 	protected.Post("/user/edit", utils.HandleUserEdit)
+	protected.Post("/user/logout", utils.HandleUserLogout)
 	protected.Get("/server/list", utils.HandleServerList)
 	protected.Post("/server/add", utils.HandleServerAdd)
 	protected.Delete("/server/del/:id", utils.HandleServerDel)

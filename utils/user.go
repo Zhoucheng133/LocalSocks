@@ -174,6 +174,12 @@ func HandleUserEdit(c fiber.Ctx) error {
 	})
 }
 
+// POST /api/user/logout
+func HandleUserLogout(c fiber.Ctx) error {
+	ClearRefreshTokenCookie(c)
+	return Respond(c, true, nil)
+}
+
 // ALL /api/auth
 func HandleAuth(c fiber.Ctx) error {
 	claims, err := AuthFromHeader(c)
